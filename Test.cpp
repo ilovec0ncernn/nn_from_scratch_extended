@@ -8,8 +8,10 @@
 #include "Alias.h"
 #include "InputDataset.h"
 #include "LossFunctions.h"
+#include "LRScheduler.h"
 #include "Metrics.h"
 #include "Network.h"
+#include "Optimizer.h"
 #include "TrainHistory.h"
 #include "WeightInit.h"
 
@@ -21,6 +23,7 @@ TrainConfig TestConfig::ToTrainConfig(std::uint64_t shuffle_seed) const {
     t.batch_size = batch_size;
     t.lr = lr;
     t.shuffle_seed = shuffle_seed;
+    t.scheduler = LRScheduler::Constant(lr);
     return t;
 }
 
@@ -42,8 +45,8 @@ static Split LoadData(const TestConfig& cfg) {
 
 static Network CreateNet(RNG& rng) {
     Network net;
-    net.AddFirstLayer(784, 128, Activation::ReLU(), rng, WeightInit::He)
-       .AddLayer(10, Activation::Identity(), rng);
+    net.AddFirstLayer(784, 128, Activation::ReLU(), rng, WeightInit::He, Optimizer::Adam(0.001f))
+        .AddLayer(10, Activation::Identity(), rng, WeightInit::Xavier, Optimizer::Adam(0.001f));
     return net;
 }
 
@@ -52,6 +55,8 @@ static TrainHistory TrainNet(Network& net, const Split& s, const TestConfig& cfg
     tcfg.epochs = cfg.epochs;
     tcfg.batch_size = cfg.batch_size;
     tcfg.lr = cfg.lr;
+    tcfg.shuffle_seed = 42;
+    tcfg.scheduler = LRScheduler::Constant(cfg.lr);
 
     Loss loss = Loss::CrossEntropy();
     return net.Train(s.X_train, s.y_train, s.X_test, s.y_test, tcfg, loss);
