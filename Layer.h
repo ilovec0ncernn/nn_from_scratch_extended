@@ -20,8 +20,9 @@ class Layer {
     Matrix Forward(const Matrix& X);
     Matrix BackwardDy(const Matrix& dL_dy);
 
-    void Step(int batch_size);
+    void Step(int batch_size, Scalar lambda = 0.0f);
     void SetLr(Scalar lr);
+    void SetTraining(bool training);
 
     Index InDim() const;
     Index OutDim() const;

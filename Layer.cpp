@@ -86,7 +86,9 @@ Matrix Layer::BackwardDy(const Matrix& dL_dy) {
     return A_.transpose() * dL_dz;
 }
 
-void Layer::Step(int batch_size) {
+void Layer::Step(int batch_size, Scalar lambda) {
+    if (lambda != Scalar(0))
+        dA_sum_.noalias() += Scalar(batch_size) * lambda * A_;
     opt_.Apply(state_A_, A_, dA_sum_, batch_size);
 
     Eigen::Map<Matrix> b_map(b_.data(), b_.rows(), 1);
@@ -101,6 +103,9 @@ void Layer::Step(int batch_size) {
 
 void Layer::SetLr(Scalar lr) {
     opt_.SetLr(lr);
+}
+
+void Layer::SetTraining(bool) {
 }
 
 void Layer::ClearCache() {
