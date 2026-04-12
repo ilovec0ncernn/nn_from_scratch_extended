@@ -2,25 +2,28 @@
 
 #include <algorithm>
 #include <cassert>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <numeric>
 #include <random>
+#include <stdexcept>
 
 namespace nn {
 
-Network& Network::AddFirstLayer(Index in_dim, Index out_dim, Activation sigma, RNG& rng) {
+Network& Network::AddFirstLayer(Index in_dim, Index out_dim, Activation sigma, RNG& rng,
+                                WeightInit init) {
     assert(!has_input_dim_ && "AddFirstLayer called twice");
-    layers_.emplace_back(in_dim, out_dim, std::move(sigma), rng);
+    layers_.emplace_back(in_dim, out_dim, std::move(sigma), rng, init);
     last_dim_ = out_dim;
     has_input_dim_ = true;
     return *this;
 }
 
-Network& Network::AddLayer(Index out_dim, Activation sigma, RNG& rng) {
+Network& Network::AddLayer(Index out_dim, Activation sigma, RNG& rng, WeightInit init) {
     assert(has_input_dim_ && "call AddFirstLayer() first");
     const Index in_dim = last_dim_;
-    layers_.emplace_back(in_dim, out_dim, std::move(sigma), rng);
+    layers_.emplace_back(in_dim, out_dim, std::move(sigma), rng, init);
     last_dim_ = out_dim;
     return *this;
 }
@@ -58,13 +61,14 @@ Vector Network::PredictOne(const Vector& x) {
     return Y.col(0);
 }
 
-void Network::Train(const Matrix& X_cols, const Matrix& Y_cols, const Matrix& X_val_cols, const Matrix& Y_val_cols,
-                    const TrainConfig& cfg, const Loss& loss) {
+TrainHistory Network::Train(const Matrix& X_cols, const Matrix& Y_cols, const Matrix& X_val_cols,
+                            const Matrix& Y_val_cols, const TrainConfig& cfg, const Loss& loss) {
+    TrainHistory history;
 
     const Index n = X_cols.cols();
     if (n == 0) {
         std::cout << "empty training set\n";
-        return;
+        return history;
     }
 
     const Index din = layers_.front().InDim();
@@ -78,6 +82,10 @@ void Network::Train(const Matrix& X_cols, const Matrix& Y_cols, const Matrix& X_
 
     Metric acc = Metric::Accuracy();
     Metric ce = Metric::CrossEntropy();
+
+    history.train_acc.reserve(cfg.epochs);
+    history.val_acc.reserve(cfg.epochs);
+    history.val_ce.reserve(cfg.epochs);
 
     for (int epoch = 1; epoch <= cfg.epochs; ++epoch) {
         std::shuffle(order.begin(), order.end(), eng);
@@ -106,16 +114,72 @@ void Network::Train(const Matrix& X_cols, const Matrix& Y_cols, const Matrix& X_
             StepAll(cfg.lr, r);
         }
 
-        const Scalar train_acc = (seen > 0) ? (sum_acc / Scalar(seen)) : Scalar(0);
+        const Scalar epoch_train_acc = (seen > 0) ? (sum_acc / Scalar(seen)) : Scalar(0);
 
         Matrix logits_val = Predict(X_val_cols);
-        const Scalar val_acc = acc.Value(Y_val_cols, logits_val);
-        const Scalar val_ce = ce.Value(Y_val_cols, logits_val);
+        const Scalar epoch_val_acc = acc.Value(Y_val_cols, logits_val);
+        const Scalar epoch_val_ce = ce.Value(Y_val_cols, logits_val);
 
-        std::cout << "epoch " << epoch << ": train_acc=" << std::fixed << std::setprecision(4) << train_acc
-                  << ", val_acc=" << std::fixed << std::setprecision(4) << val_acc << ", val_ce=" << std::fixed
-                  << std::setprecision(4) << val_ce << std::endl;
+        history.train_acc.push_back(epoch_train_acc);
+        history.val_acc.push_back(epoch_val_acc);
+        history.val_ce.push_back(epoch_val_ce);
+
+        std::cout << "epoch " << epoch << ": train_acc=" << std::fixed << std::setprecision(4) << epoch_train_acc
+                  << ", val_acc=" << std::fixed << std::setprecision(4) << epoch_val_acc << ", val_ce=" << std::fixed
+                  << std::setprecision(4) << epoch_val_ce << std::endl;
     }
+
+    ClearCache();
+    return history;
+}
+
+void Network::ClearCache() {
+    for (auto& layer : layers_)
+        layer.ClearCache();
+}
+
+void Network::Save(const std::filesystem::path& path) const {
+    std::ofstream out(path, std::ios::binary);
+    if (!out)
+        throw std::runtime_error("Network::Save: cannot open file: " + path.string());
+
+    const uint32_t magic = 0x4E4E574F;
+    const uint32_t version = 1;
+    const uint32_t num_layers = static_cast<uint32_t>(layers_.size());
+    out.write(reinterpret_cast<const char*>(&magic), sizeof(magic));
+    out.write(reinterpret_cast<const char*>(&version), sizeof(version));
+    out.write(reinterpret_cast<const char*>(&num_layers), sizeof(num_layers));
+
+    for (const auto& layer : layers_)
+        layer.SaveWeights(out);
+
+    if (!out)
+        throw std::runtime_error("Network::Save: write error");
+}
+
+void Network::Load(const std::filesystem::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in)
+        throw std::runtime_error("Network::Load: cannot open file: " + path.string());
+
+    uint32_t magic, version, num_layers;
+    in.read(reinterpret_cast<char*>(&magic), sizeof(magic));
+    in.read(reinterpret_cast<char*>(&version), sizeof(version));
+    in.read(reinterpret_cast<char*>(&num_layers), sizeof(num_layers));
+
+    if (magic != 0x4E4E574F)
+        throw std::runtime_error("Network::Load: invalid file format");
+    if (version != 1)
+        throw std::runtime_error("Network::Load: unsupported version " + std::to_string(version));
+    if (num_layers != static_cast<uint32_t>(layers_.size()))
+        throw std::runtime_error("Network::Load: layer count mismatch (file has " + std::to_string(num_layers) +
+                                 ", network has " + std::to_string(layers_.size()) + ")");
+
+    for (auto& layer : layers_)
+        layer.LoadWeights(in);
+
+    if (!in)
+        throw std::runtime_error("Network::Load: read error or unexpected EOF");
 }
 
 }  // namespace nn

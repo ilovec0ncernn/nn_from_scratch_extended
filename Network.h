@@ -1,5 +1,6 @@
 #pragma once
 
+#include <filesystem>
 #include <random>
 #include <vector>
 
@@ -7,6 +8,8 @@
 #include "Layer.h"
 #include "LossFunctions.h"
 #include "Metrics.h"
+#include "TrainHistory.h"
+#include "WeightInit.h"
 
 namespace nn {
 
@@ -21,14 +24,20 @@ class Network {
    public:
     Network() = default;
 
-    Network& AddFirstLayer(Index in_dim, Index out_dim, Activation sigma, RNG& rng);
-    Network& AddLayer(Index out_dim, Activation sigma, RNG& rng);
+    Network& AddFirstLayer(Index in_dim, Index out_dim, Activation sigma, RNG& rng,
+                           WeightInit init = WeightInit::Xavier);
+    Network& AddLayer(Index out_dim, Activation sigma, RNG& rng, WeightInit init = WeightInit::Xavier);
 
-    void Train(const Matrix& X_cols, const Matrix& Y_cols, const Matrix& X_val_cols, const Matrix& Y_val_cols,
-               const TrainConfig& cfg, const Loss& loss);
+    TrainHistory Train(const Matrix& X_cols, const Matrix& Y_cols, const Matrix& X_val_cols, const Matrix& Y_val_cols,
+                       const TrainConfig& cfg, const Loss& loss);
 
     Matrix Predict(const Matrix& X_cols);
     Vector PredictOne(const Vector& x);
+
+    void ClearCache();
+
+    void Save(const std::filesystem::path& path) const;
+    void Load(const std::filesystem::path& path);
 
    private:
     Matrix ForwardAll(const Matrix& Xb);

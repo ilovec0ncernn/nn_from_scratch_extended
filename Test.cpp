@@ -10,6 +10,8 @@
 #include "LossFunctions.h"
 #include "Metrics.h"
 #include "Network.h"
+#include "TrainHistory.h"
+#include "WeightInit.h"
 
 namespace nn {
 
@@ -40,18 +42,19 @@ static Split LoadData(const TestConfig& cfg) {
 
 static Network CreateNet(RNG& rng) {
     Network net;
-    net.AddFirstLayer(784, 128, Activation::ReLU(), rng).AddLayer(10, Activation::Identity(), rng);
+    net.AddFirstLayer(784, 128, Activation::ReLU(), rng, WeightInit::He)
+       .AddLayer(10, Activation::Identity(), rng);
     return net;
 }
 
-static void TrainNet(Network& net, const Split& s, const TestConfig& cfg) {
+static TrainHistory TrainNet(Network& net, const Split& s, const TestConfig& cfg) {
     TrainConfig tcfg;
     tcfg.epochs = cfg.epochs;
     tcfg.batch_size = cfg.batch_size;
     tcfg.lr = cfg.lr;
 
     Loss loss = Loss::CrossEntropy();
-    net.Train(s.X_train, s.y_train, s.X_test, s.y_test, tcfg, loss);
+    return net.Train(s.X_train, s.y_train, s.X_test, s.y_test, tcfg, loss);
 }
 
 void TestMnistBasic(const TestConfig& cfg) {
@@ -61,16 +64,22 @@ void TestMnistBasic(const TestConfig& cfg) {
     Split data = LoadData(cfg);
     Network net = CreateNet(rng);
 
-    TrainNet(net, data, cfg);
+    TrainHistory history = TrainNet(net, data, cfg);
 
-    Metric acc = Metric::Accuracy();
-    Metric ce = Metric::CrossEntropy();
     Matrix logits = net.Predict(data.X_test);
-    Scalar final_acc = acc.Value(data.y_test, logits);
-    Scalar final_ce = ce.Value(data.y_test, logits);
+    Scalar final_acc = Metric::Accuracy().Value(data.y_test, logits);
+    Scalar final_ce = Metric::CrossEntropy().Value(data.y_test, logits);
+    Scalar final_precision = Metric::Precision().Value(data.y_test, logits);
+    Scalar final_recall = Metric::Recall().Value(data.y_test, logits);
 
-    std::cout << "[test] final test accuracy=" << std::fixed << std::setprecision(4) << final_acc
-              << ", final CE=" << std::fixed << std::setprecision(4) << final_ce << std::endl;
+    std::cout << "[test] accuracy=" << std::fixed << std::setprecision(4) << final_acc << "  CE=" << std::fixed
+              << std::setprecision(4) << final_ce << "  precision=" << std::fixed << std::setprecision(4)
+              << final_precision << "  recall=" << std::fixed << std::setprecision(4) << final_recall << std::endl;
+
+    std::cout << "[history] val_acc per epoch:";
+    for (int i = 0; i < static_cast<int>(history.val_acc.size()); ++i)
+        std::cout << " " << std::fixed << std::setprecision(4) << history.val_acc[i];
+    std::cout << std::endl;
 }
 
 void RunAllTests() {

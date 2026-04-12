@@ -18,6 +18,9 @@ class Metric {
     static Metric Accuracy();
     static Metric CrossEntropy();
 
+    static Metric Precision();
+    static Metric Recall();
+
    private:
     std::function<BatchSig> value_;
 };

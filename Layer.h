@@ -1,15 +1,17 @@
 #pragma once
 
 #include <Eigen/Dense>
+#include <iosfwd>
 
 #include "ActivationFunctions.h"
 #include "Alias.h"
+#include "WeightInit.h"
 
 namespace nn {
 
 class Layer {
    public:
-    Layer(Index in_dim, Index out_dim, Activation sigma, RNG& rng);
+    Layer(Index in_dim, Index out_dim, Activation sigma, RNG& rng, WeightInit init = WeightInit::Xavier);
 
     Vector Forward(const Vector& x);
     Vector BackwardDy(const Vector& dL_dy);
@@ -22,8 +24,13 @@ class Layer {
     Index InDim() const;
     Index OutDim() const;
 
+    void ClearCache();
+
+    void SaveWeights(std::ostream& out) const;
+    void LoadWeights(std::istream& in);
+
    private:
-    static Matrix InitA(Index out_dim, Index in_dim, RNG& rng);
+    static Matrix InitA(Index out_dim, Index in_dim, RNG& rng, WeightInit init);
     static Vector InitB(Index out_dim);
 
     Matrix A_;
