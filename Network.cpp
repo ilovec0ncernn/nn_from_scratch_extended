@@ -11,19 +11,19 @@
 
 namespace nn {
 
-Network& Network::AddFirstLayer(Index in_dim, Index out_dim, Activation sigma, RNG& rng,
-                                WeightInit init) {
+Network& Network::AddFirstLayer(Index in_dim, Index out_dim, Activation sigma, RNG& rng, WeightInit init,
+                                Optimizer opt) {
     assert(!has_input_dim_ && "AddFirstLayer called twice");
-    layers_.emplace_back(in_dim, out_dim, std::move(sigma), rng, init);
+    layers_.emplace_back(in_dim, out_dim, std::move(sigma), rng, init, std::move(opt));
     last_dim_ = out_dim;
     has_input_dim_ = true;
     return *this;
 }
 
-Network& Network::AddLayer(Index out_dim, Activation sigma, RNG& rng, WeightInit init) {
+Network& Network::AddLayer(Index out_dim, Activation sigma, RNG& rng, WeightInit init, Optimizer opt) {
     assert(has_input_dim_ && "call AddFirstLayer() first");
     const Index in_dim = last_dim_;
-    layers_.emplace_back(in_dim, out_dim, std::move(sigma), rng, init);
+    layers_.emplace_back(in_dim, out_dim, std::move(sigma), rng, init, std::move(opt));
     last_dim_ = out_dim;
     return *this;
 }
@@ -43,9 +43,14 @@ Matrix Network::BackwardAll(const Matrix& dY) {
     return grad;
 }
 
-void Network::StepAll(Scalar lr, int batch_size) {
+void Network::StepAll(int batch_size) {
     for (auto& L : layers_)
-        L.Step(lr, batch_size);
+        L.Step(batch_size);
+}
+
+void Network::SetLrAll(Scalar lr) {
+    for (auto& L : layers_)
+        L.SetLr(lr);
 }
 
 Matrix Network::Predict(const Matrix& X_cols) {
@@ -88,6 +93,9 @@ TrainHistory Network::Train(const Matrix& X_cols, const Matrix& Y_cols, const Ma
     history.val_ce.reserve(cfg.epochs);
 
     for (int epoch = 1; epoch <= cfg.epochs; ++epoch) {
+        const Scalar epoch_lr = cfg.scheduler.Step(epoch);
+        SetLrAll(epoch_lr);
+
         std::shuffle(order.begin(), order.end(), eng);
         Scalar sum_acc = Scalar(0);
         Index seen = 0;
@@ -111,7 +119,7 @@ TrainHistory Network::Train(const Matrix& X_cols, const Matrix& Y_cols, const Ma
 
             Matrix dY = loss.Gradient(Yb, logits);
             BackwardAll(dY);
-            StepAll(cfg.lr, r);
+            StepAll(r);
         }
 
         const Scalar epoch_train_acc = (seen > 0) ? (sum_acc / Scalar(seen)) : Scalar(0);
@@ -124,7 +132,8 @@ TrainHistory Network::Train(const Matrix& X_cols, const Matrix& Y_cols, const Ma
         history.val_acc.push_back(epoch_val_acc);
         history.val_ce.push_back(epoch_val_ce);
 
-        std::cout << "epoch " << epoch << ": train_acc=" << std::fixed << std::setprecision(4) << epoch_train_acc
+        std::cout << "epoch " << epoch << " (lr=" << std::fixed << std::setprecision(5) << epoch_lr
+                  << "): train_acc=" << std::fixed << std::setprecision(4) << epoch_train_acc
                   << ", val_acc=" << std::fixed << std::setprecision(4) << epoch_val_acc << ", val_ce=" << std::fixed
                   << std::setprecision(4) << epoch_val_ce << std::endl;
     }
