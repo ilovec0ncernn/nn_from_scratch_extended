@@ -28,8 +28,8 @@ Vector Layer::InitB(Index out_dim) {
     return Vector::Constant(out_dim, Scalar(0.01f));
 }
 
-Layer::Layer(Index in_dim, Index out_dim, Activation sigma, RNG& rng, WeightInit init)
-    : A_(InitA(out_dim, in_dim, rng, init)), b_(InitB(out_dim)), sigma_(std::move(sigma)) {
+Layer::Layer(Index in_dim, Index out_dim, Activation sigma, RNG& rng, WeightInit init, Optimizer opt)
+    : A_(InitA(out_dim, in_dim, rng, init)), b_(InitB(out_dim)), sigma_(std::move(sigma)), opt_(std::move(opt)) {
 }
 
 Index Layer::InDim() const {
@@ -86,16 +86,21 @@ Matrix Layer::BackwardDy(const Matrix& dL_dy) {
     return A_.transpose() * dL_dz;
 }
 
-void Layer::Step(float lr, int batch_size) {
-    const Scalar scale = lr / static_cast<Scalar>(batch_size);
-    A_ -= scale * dA_sum_;
-    b_ -= scale * db_sum_;
-    if (dA_sum_.size() != 0) {
+void Layer::Step(int batch_size) {
+    opt_.Apply(state_A_, A_, dA_sum_, batch_size);
+
+    Eigen::Map<Matrix> b_map(b_.data(), b_.rows(), 1);
+    Eigen::Map<const Matrix> db_map(db_sum_.data(), db_sum_.rows(), 1);
+    opt_.Apply(state_b_, b_map, db_map, batch_size);
+
+    if (dA_sum_.size() != 0)
         dA_sum_.setZero();
-    }
-    if (db_sum_.size() != 0) {
+    if (db_sum_.size() != 0)
         db_sum_.setZero();
-    }
+}
+
+void Layer::SetLr(Scalar lr) {
+    opt_.SetLr(lr);
 }
 
 void Layer::ClearCache() {
