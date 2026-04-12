@@ -14,7 +14,8 @@ namespace nn {
 Network& Network::AddFirstLayer(Index in_dim, Index out_dim, Activation sigma, RNG& rng, WeightInit init,
                                 Optimizer opt) {
     assert(!has_input_dim_ && "AddFirstLayer called twice");
-    layers_.emplace_back(in_dim, out_dim, std::move(sigma), rng, init, std::move(opt));
+    layers_.push_back(Layer(in_dim, out_dim, std::move(sigma), rng, init, std::move(opt)));
+    first_dim_ = in_dim;
     last_dim_ = out_dim;
     has_input_dim_ = true;
     return *this;
@@ -23,39 +24,50 @@ Network& Network::AddFirstLayer(Index in_dim, Index out_dim, Activation sigma, R
 Network& Network::AddLayer(Index out_dim, Activation sigma, RNG& rng, WeightInit init, Optimizer opt) {
     assert(has_input_dim_ && "call AddFirstLayer() first");
     const Index in_dim = last_dim_;
-    layers_.emplace_back(in_dim, out_dim, std::move(sigma), rng, init, std::move(opt));
+    layers_.push_back(Layer(in_dim, out_dim, std::move(sigma), rng, init, std::move(opt)));
     last_dim_ = out_dim;
+    return *this;
+}
+
+Network& Network::AddDropout(Scalar drop_rate, std::uint64_t seed) {
+    assert(has_input_dim_ && "call AddFirstLayer() first");
+    layers_.push_back(Dropout(drop_rate, seed));
     return *this;
 }
 
 Matrix Network::ForwardAll(const Matrix& Xb) {
     Matrix h = Xb;
     for (auto& L : layers_)
-        h = L.Forward(h);
+        h = std::visit([&h](auto& l) { return l.Forward(h); }, L);
     return h;
 }
 
 Matrix Network::BackwardAll(const Matrix& dY) {
-    Matrix grad = layers_.back().BackwardDy(dY);
-    for (auto it = layers_.rbegin() + 1; it != layers_.rend(); ++it) {
-        grad = it->BackwardDy(grad);
-    }
+    Matrix grad = std::visit([&dY](auto& l) { return l.BackwardDy(dY); }, layers_.back());
+    for (auto it = layers_.rbegin() + 1; it != layers_.rend(); ++it)
+        grad = std::visit([&grad](auto& l) { return l.BackwardDy(grad); }, *it);
     return grad;
 }
 
-void Network::StepAll(int batch_size) {
+void Network::StepAll(int batch_size, Scalar lambda) {
     for (auto& L : layers_)
-        L.Step(batch_size);
+        std::visit([batch_size, lambda](auto& l) { l.Step(batch_size, lambda); }, L);
 }
 
 void Network::SetLrAll(Scalar lr) {
     for (auto& L : layers_)
-        L.SetLr(lr);
+        std::visit([lr](auto& l) { l.SetLr(lr); }, L);
+}
+
+void Network::SetTrainingAll(bool training) {
+    for (auto& L : layers_)
+        std::visit([training](auto& l) { l.SetTraining(training); }, L);
 }
 
 Matrix Network::Predict(const Matrix& X_cols) {
     if (layers_.empty())
         return Matrix::Zero(0, X_cols.cols());
+    SetTrainingAll(false);
     return ForwardAll(X_cols);
 }
 
@@ -76,8 +88,8 @@ TrainHistory Network::Train(const Matrix& X_cols, const Matrix& Y_cols, const Ma
         return history;
     }
 
-    const Index din = layers_.front().InDim();
-    const Index dout = layers_.back().OutDim();
+    const Index din = first_dim_;
+    const Index dout = last_dim_;
     const int b = std::max(1, cfg.batch_size);
 
     std::vector<Index> order(n);
@@ -91,6 +103,8 @@ TrainHistory Network::Train(const Matrix& X_cols, const Matrix& Y_cols, const Ma
     history.train_acc.reserve(cfg.epochs);
     history.val_acc.reserve(cfg.epochs);
     history.val_ce.reserve(cfg.epochs);
+
+    SetTrainingAll(true);
 
     for (int epoch = 1; epoch <= cfg.epochs; ++epoch) {
         const Scalar epoch_lr = cfg.scheduler.Step(epoch);
@@ -119,12 +133,15 @@ TrainHistory Network::Train(const Matrix& X_cols, const Matrix& Y_cols, const Ma
 
             Matrix dY = loss.Gradient(Yb, logits);
             BackwardAll(dY);
-            StepAll(r);
+            StepAll(r, cfg.weight_decay);
         }
 
         const Scalar epoch_train_acc = (seen > 0) ? (sum_acc / Scalar(seen)) : Scalar(0);
 
-        Matrix logits_val = Predict(X_val_cols);
+        SetTrainingAll(false);
+        Matrix logits_val = ForwardAll(X_val_cols);
+        SetTrainingAll(true);
+
         const Scalar epoch_val_acc = acc.Value(Y_val_cols, logits_val);
         const Scalar epoch_val_ce = ce.Value(Y_val_cols, logits_val);
 
@@ -139,12 +156,13 @@ TrainHistory Network::Train(const Matrix& X_cols, const Matrix& Y_cols, const Ma
     }
 
     ClearCache();
+    SetTrainingAll(false);
     return history;
 }
 
 void Network::ClearCache() {
-    for (auto& layer : layers_)
-        layer.ClearCache();
+    for (auto& L : layers_)
+        std::visit([](auto& l) { l.ClearCache(); }, L);
 }
 
 void Network::Save(const std::filesystem::path& path) const {
@@ -159,8 +177,8 @@ void Network::Save(const std::filesystem::path& path) const {
     out.write(reinterpret_cast<const char*>(&version), sizeof(version));
     out.write(reinterpret_cast<const char*>(&num_layers), sizeof(num_layers));
 
-    for (const auto& layer : layers_)
-        layer.SaveWeights(out);
+    for (const auto& L : layers_)
+        std::visit([&out](const auto& l) { l.SaveWeights(out); }, L);
 
     if (!out)
         throw std::runtime_error("Network::Save: write error");
@@ -184,8 +202,8 @@ void Network::Load(const std::filesystem::path& path) {
         throw std::runtime_error("Network::Load: layer count mismatch (file has " + std::to_string(num_layers) +
                                  ", network has " + std::to_string(layers_.size()) + ")");
 
-    for (auto& layer : layers_)
-        layer.LoadWeights(in);
+    for (auto& L : layers_)
+        std::visit([&in](auto& l) { l.LoadWeights(in); }, L);
 
     if (!in)
         throw std::runtime_error("Network::Load: read error or unexpected EOF");

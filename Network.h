@@ -1,10 +1,12 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
-#include <random>
+#include <variant>
 #include <vector>
 
 #include "Alias.h"
+#include "Dropout.h"
 #include "Layer.h"
 #include "LossFunctions.h"
 #include "LRScheduler.h"
@@ -21,6 +23,7 @@ struct TrainConfig {
     float lr = 0.05f;
     std::uint64_t shuffle_seed = 42;
     LRScheduler scheduler = LRScheduler::Constant(0.05f);
+    Scalar weight_decay = 0.0f;
 };
 
 class Network {
@@ -31,6 +34,7 @@ class Network {
                            WeightInit init = WeightInit::Xavier, Optimizer opt = Optimizer::SGD(0.05f));
     Network& AddLayer(Index out_dim, Activation sigma, RNG& rng, WeightInit init = WeightInit::Xavier,
                       Optimizer opt = Optimizer::SGD(0.05f));
+    Network& AddDropout(Scalar drop_rate, std::uint64_t seed = 42);
 
     TrainHistory Train(const Matrix& X_cols, const Matrix& Y_cols, const Matrix& X_val_cols, const Matrix& Y_val_cols,
                        const TrainConfig& cfg, const Loss& loss);
@@ -44,12 +48,16 @@ class Network {
     void Load(const std::filesystem::path& path);
 
    private:
+    using AnyLayer = std::variant<Layer, Dropout>;
+
     Matrix ForwardAll(const Matrix& Xb);
     Matrix BackwardAll(const Matrix& dY);
-    void StepAll(int batch_size);
+    void StepAll(int batch_size, Scalar lambda);
     void SetLrAll(Scalar lr);
+    void SetTrainingAll(bool training);
 
-    std::vector<Layer> layers_;
+    std::vector<AnyLayer> layers_;
+    Index first_dim_ = -1;
     Index last_dim_ = -1;
     bool has_input_dim_ = false;
 };
