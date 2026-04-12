@@ -6,4 +6,4 @@
 	url = https://github.com/bab2min/EigenRand
 [submodule "external_submodules/mnist"]
 	path = external_submodules/mnist
-	url = https://github.com/wichtounet/mnist.git
+	url = https://github.com/wichtounet/mnist
