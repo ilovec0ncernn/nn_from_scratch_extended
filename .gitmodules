@@ -7,3 +7,6 @@
 [submodule "external_submodules/mnist"]
 	path = external_submodules/mnist
 	url = https://github.com/wichtounet/mnist
+[submodule "external_submodules/CIFAR-10"]
+	path = external_submodules/CIFAR-10
+	url = https://github.com/wichtounet/cifar-10
