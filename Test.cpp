@@ -62,9 +62,9 @@ static Network CreateMnistNet(RNG& rng) {
 static Network CreateCifarNet(RNG& rng) {
     Network net;
     net.AddFirstLayer(3072, 512, Activation::ReLU(), rng, WeightInit::He, Optimizer::Adam(0.001f))
-        .AddDropout(0.3f)
+        .AddDropout(0.2f)
         .AddLayer(256, Activation::ReLU(), rng, WeightInit::He, Optimizer::Adam(0.001f))
-        .AddDropout(0.3f)
+        .AddDropout(0.2f)
         .AddLayer(10, Activation::Identity(), rng, WeightInit::Xavier, Optimizer::Adam(0.001f));
     return net;
 }
@@ -92,8 +92,9 @@ static void PrintResults(const TrainHistory& history, const Matrix& logits, cons
               << final_precision << "  recall=" << std::fixed << std::setprecision(4) << final_recall << std::endl;
 
     std::cout << "[history] val_acc per epoch:";
-    for (int i = 0; i < static_cast<int>(history.val_acc.size()); ++i)
+    for (int i = 0; i < static_cast<int>(history.val_acc.size()); ++i) {
         std::cout << " " << std::fixed << std::setprecision(4) << history.val_acc[i];
+    }
     std::cout << std::endl;
 }
 
@@ -122,9 +123,12 @@ void TestCifar10Basic(const TestConfig& cfg) {
 }
 
 void RunAllTests() {
-    TestConfig cfg;
-    TestMnistBasic(cfg);
-    TestCifar10Basic(cfg);
+    TestConfig mnist_cfg;
+    TestMnistBasic(mnist_cfg);
+
+    TestConfig cifar_cfg;
+    cifar_cfg.epochs = 30;
+    TestCifar10Basic(cifar_cfg);
 }
 
 }  // namespace nn
