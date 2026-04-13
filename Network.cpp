@@ -35,6 +35,52 @@ Network& Network::AddDropout(Scalar drop_rate, std::uint64_t seed) {
     return *this;
 }
 
+Network& Network::AddFirstConvLayer(Index C_in, Index H_in, Index W_in, Index C_out, Index kH, Index kW, RNG& rng,
+                                    Activation sigma, WeightInit init, Optimizer opt, Index stride, Index pad) {
+    assert(!has_input_dim_ && "AddFirstConvLayer/AddFirstLayer called twice");
+    layers_.push_back(
+        ConvLayer(C_in, H_in, W_in, C_out, kH, kW, rng, std::move(sigma), init, std::move(opt), stride, pad));
+    first_dim_ = C_in * H_in * W_in;
+    last_C_ = C_out;
+    last_H_ = (H_in + 2 * pad - kH) / stride + 1;
+    last_W_ = (W_in + 2 * pad - kW) / stride + 1;
+    last_dim_ = last_C_ * last_H_ * last_W_;
+    is_spatial_ = true;
+    has_input_dim_ = true;
+    return *this;
+}
+
+Network& Network::AddConvLayer(Index C_out, Index kH, Index kW, RNG& rng, Activation sigma, WeightInit init,
+                               Optimizer opt, Index stride, Index pad) {
+    assert(has_input_dim_ && "call AddFirstLayer/AddFirstConvLayer() first");
+    assert(is_spatial_ && "AddConvLayer requires a previous spatial layer");
+    layers_.push_back(
+        ConvLayer(last_C_, last_H_, last_W_, C_out, kH, kW, rng, std::move(sigma), init, std::move(opt), stride, pad));
+    last_C_ = C_out;
+    last_H_ = (last_H_ + 2 * pad - kH) / stride + 1;
+    last_W_ = (last_W_ + 2 * pad - kW) / stride + 1;
+    last_dim_ = last_C_ * last_H_ * last_W_;
+    return *this;
+}
+
+Network& Network::AddMaxPool(Index kH, Index kW, Index stride) {
+    assert(is_spatial_ && "AddMaxPool requires a previous spatial layer");
+    layers_.push_back(MaxPool(last_C_, last_H_, last_W_, kH, kW, stride));
+    last_H_ = (last_H_ - kH) / stride + 1;
+    last_W_ = (last_W_ - kW) / stride + 1;
+    last_dim_ = last_C_ * last_H_ * last_W_;
+    return *this;
+}
+
+Network& Network::AddFlatten() {
+    assert(is_spatial_ && "AddFlatten requires a previous spatial layer");
+    layers_.push_back(Flatten());
+    last_dim_ = last_C_ * last_H_ * last_W_;
+    last_C_ = last_H_ = last_W_ = 0;
+    is_spatial_ = false;
+    return *this;
+}
+
 Matrix Network::ForwardAll(const Matrix& Xb) {
     Matrix h = Xb;
     for (auto& L : layers_)
