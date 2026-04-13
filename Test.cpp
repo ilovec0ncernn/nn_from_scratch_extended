@@ -69,6 +69,19 @@ static Network CreateCifarNet(RNG& rng) {
     return net;
 }
 
+static Network CreateCifarCNN(RNG& rng) {
+    Network net;
+    net.AddFirstConvLayer(3, 32, 32, 32, 3, 3, rng, Activation::ReLU(), WeightInit::He, Optimizer::Adam(0.001f), 1, 1)
+        .AddMaxPool(2, 2)
+        .AddConvLayer(64, 3, 3, rng, Activation::ReLU(), WeightInit::He, Optimizer::Adam(0.001f), 1, 1)
+        .AddMaxPool(2, 2)
+        .AddFlatten()
+        .AddLayer(512, Activation::ReLU(), rng, WeightInit::He, Optimizer::Adam(0.001f))
+        .AddDropout(0.5f)
+        .AddLayer(10, Activation::Identity(), rng, WeightInit::Xavier, Optimizer::Adam(0.001f));
+    return net;
+}
+
 static TrainHistory TrainNet(Network& net, const Split& s, const TestConfig& cfg) {
     TrainConfig tcfg;
     tcfg.epochs = cfg.epochs;
@@ -122,13 +135,25 @@ void TestCifar10Basic(const TestConfig& cfg) {
     PrintResults(history, logits, data.y_test);
 }
 
+void TestCifar10CNN(const TestConfig& cfg) {
+    std::cout << "training cnn on cifar-10 dataset\n";
+
+    RNG rng;
+    Split data = LoadCifarData(cfg);
+    Network net = CreateCifarCNN(rng);
+    TrainHistory history = TrainNet(net, data, cfg);
+
+    Matrix logits = net.Predict(data.X_test);
+    PrintResults(history, logits, data.y_test);
+}
+
 void RunAllTests() {
     TestConfig mnist_cfg;
     TestMnistBasic(mnist_cfg);
 
-    TestConfig cifar_cfg;
-    cifar_cfg.epochs = 30;
-    TestCifar10Basic(cifar_cfg);
+    TestConfig cifar_cnn_cfg;
+    cifar_cnn_cfg.epochs = 30;
+    TestCifar10CNN(cifar_cnn_cfg);
 }
 
 }  // namespace nn
