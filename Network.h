@@ -6,10 +6,13 @@
 #include <vector>
 
 #include "Alias.h"
+#include "ConvLayer.h"
 #include "Dropout.h"
+#include "Flatten.h"
 #include "Layer.h"
 #include "LossFunctions.h"
 #include "LRScheduler.h"
+#include "MaxPool.h"
 #include "Metrics.h"
 #include "Optimizer.h"
 #include "TrainHistory.h"
@@ -36,6 +39,14 @@ class Network {
                       Optimizer opt = Optimizer::SGD(0.05f));
     Network& AddDropout(Scalar drop_rate, std::uint64_t seed = 42);
 
+    Network& AddFirstConvLayer(Index C_in, Index H_in, Index W_in, Index C_out, Index kH, Index kW, RNG& rng,
+                               Activation sigma, WeightInit init = WeightInit::He,
+                               Optimizer opt = Optimizer::SGD(0.05f), Index stride = 1, Index pad = 0);
+    Network& AddConvLayer(Index C_out, Index kH, Index kW, RNG& rng, Activation sigma, WeightInit init = WeightInit::He,
+                          Optimizer opt = Optimizer::SGD(0.05f), Index stride = 1, Index pad = 0);
+    Network& AddMaxPool(Index kH, Index kW, Index stride = 2);
+    Network& AddFlatten();
+
     TrainHistory Train(const Matrix& X_cols, const Matrix& Y_cols, const Matrix& X_val_cols, const Matrix& Y_val_cols,
                        const TrainConfig& cfg, const Loss& loss);
 
@@ -48,7 +59,7 @@ class Network {
     void Load(const std::filesystem::path& path);
 
    private:
-    using AnyLayer = std::variant<Layer, Dropout>;
+    using AnyLayer = std::variant<Layer, Dropout, ConvLayer, MaxPool, Flatten>;
 
     Matrix ForwardAll(const Matrix& Xb);
     Matrix BackwardAll(const Matrix& dY);
@@ -60,6 +71,11 @@ class Network {
     Index first_dim_ = -1;
     Index last_dim_ = -1;
     bool has_input_dim_ = false;
+
+    Index last_C_ = 0;
+    Index last_H_ = 0;
+    Index last_W_ = 0;
+    bool is_spatial_ = false;
 };
 
 }  // namespace nn
