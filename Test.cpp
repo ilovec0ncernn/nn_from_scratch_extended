@@ -34,7 +34,7 @@ static Matrix TakeCols(const Matrix& M, int n) {
     return M.leftCols(n);
 }
 
-static Split LoadData(const TestConfig& cfg) {
+static Split LoadMnistData(const TestConfig& cfg) {
     Split s = InputDataset::LoadMnist();
     s.X_train = TakeCols(s.X_train, cfg.train_limit);
     s.y_train = TakeCols(s.y_train, cfg.train_limit);
@@ -43,9 +43,28 @@ static Split LoadData(const TestConfig& cfg) {
     return s;
 }
 
-static Network CreateNet(RNG& rng) {
+static Split LoadCifarData(const TestConfig& cfg) {
+    Split s = InputDataset::LoadCifar10();
+    s.X_train = TakeCols(s.X_train, cfg.train_limit);
+    s.y_train = TakeCols(s.y_train, cfg.train_limit);
+    s.X_test = TakeCols(s.X_test, cfg.test_limit);
+    s.y_test = TakeCols(s.y_test, cfg.test_limit);
+    return s;
+}
+
+static Network CreateMnistNet(RNG& rng) {
     Network net;
     net.AddFirstLayer(784, 128, Activation::ReLU(), rng, WeightInit::He, Optimizer::Adam(0.001f))
+        .AddLayer(10, Activation::Identity(), rng, WeightInit::Xavier, Optimizer::Adam(0.001f));
+    return net;
+}
+
+static Network CreateCifarNet(RNG& rng) {
+    Network net;
+    net.AddFirstLayer(3072, 512, Activation::ReLU(), rng, WeightInit::He, Optimizer::Adam(0.001f))
+        .AddDropout(0.3f)
+        .AddLayer(256, Activation::ReLU(), rng, WeightInit::He, Optimizer::Adam(0.001f))
+        .AddDropout(0.3f)
         .AddLayer(10, Activation::Identity(), rng, WeightInit::Xavier, Optimizer::Adam(0.001f));
     return net;
 }
@@ -62,20 +81,11 @@ static TrainHistory TrainNet(Network& net, const Split& s, const TestConfig& cfg
     return net.Train(s.X_train, s.y_train, s.X_test, s.y_test, tcfg, loss);
 }
 
-void TestMnistBasic(const TestConfig& cfg) {
-    std::cout << "training model on mnist dataset\n";
-
-    RNG rng;
-    Split data = LoadData(cfg);
-    Network net = CreateNet(rng);
-
-    TrainHistory history = TrainNet(net, data, cfg);
-
-    Matrix logits = net.Predict(data.X_test);
-    Scalar final_acc = Metric::Accuracy().Value(data.y_test, logits);
-    Scalar final_ce = Metric::CrossEntropy().Value(data.y_test, logits);
-    Scalar final_precision = Metric::Precision().Value(data.y_test, logits);
-    Scalar final_recall = Metric::Recall().Value(data.y_test, logits);
+static void PrintResults(const TrainHistory& history, const Matrix& logits, const Matrix& y_test) {
+    Scalar final_acc = Metric::Accuracy().Value(y_test, logits);
+    Scalar final_ce = Metric::CrossEntropy().Value(y_test, logits);
+    Scalar final_precision = Metric::Precision().Value(y_test, logits);
+    Scalar final_recall = Metric::Recall().Value(y_test, logits);
 
     std::cout << "[test] accuracy=" << std::fixed << std::setprecision(4) << final_acc << "  CE=" << std::fixed
               << std::setprecision(4) << final_ce << "  precision=" << std::fixed << std::setprecision(4)
@@ -87,9 +97,34 @@ void TestMnistBasic(const TestConfig& cfg) {
     std::cout << std::endl;
 }
 
+void TestMnistBasic(const TestConfig& cfg) {
+    std::cout << "training model on mnist dataset\n";
+
+    RNG rng;
+    Split data = LoadMnistData(cfg);
+    Network net = CreateMnistNet(rng);
+    TrainHistory history = TrainNet(net, data, cfg);
+
+    Matrix logits = net.Predict(data.X_test);
+    PrintResults(history, logits, data.y_test);
+}
+
+void TestCifar10Basic(const TestConfig& cfg) {
+    std::cout << "training model on cifar-10 dataset\n";
+
+    RNG rng;
+    Split data = LoadCifarData(cfg);
+    Network net = CreateCifarNet(rng);
+    TrainHistory history = TrainNet(net, data, cfg);
+
+    Matrix logits = net.Predict(data.X_test);
+    PrintResults(history, logits, data.y_test);
+}
+
 void RunAllTests() {
     TestConfig cfg;
     TestMnistBasic(cfg);
+    TestCifar10Basic(cfg);
 }
 
 }  // namespace nn
