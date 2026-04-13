@@ -8,7 +8,7 @@ struct TrainConfig;
 struct TestConfig {
     int epochs = 15;
     int batch_size = 64;
-    float lr = 0.1f;
+    float lr = 0.001f;
     int train_limit = -1;
     int test_limit = -1;
 
