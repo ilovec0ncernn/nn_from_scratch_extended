@@ -6,12 +6,12 @@
 #include "mnist/mnist_reader.hpp"
 #endif
 
-#include "cifar/cifar10_reader.hpp"
-
 #include <cstdint>
 #include <stdexcept>
 #include <utility>
 #include <vector>
+
+#include "cifar/cifar10_reader.hpp"
 
 namespace nn {
 
@@ -44,7 +44,7 @@ static std::pair<Matrix, Matrix> MakeXY(const std::vector<std::vector<uint8_t>>&
 }
 
 static std::pair<Matrix, Matrix> MakeCifarXY(const std::vector<std::vector<uint8_t>>& images,
-                                              const std::vector<uint8_t>& labels) {
+                                             const std::vector<uint8_t>& labels) {
     const Index n = static_cast<Index>(images.size());
 
     Matrix X(3072, n);
