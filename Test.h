@@ -18,5 +18,6 @@ struct TestConfig {
 void RunAllTests();
 
 void TestMnistBasic(const TestConfig& cfg);
+void TestCifar10Basic(const TestConfig& cfg);
 
 }  // namespace nn
