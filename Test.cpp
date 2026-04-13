@@ -23,7 +23,8 @@ TrainConfig TestConfig::ToTrainConfig(std::uint64_t shuffle_seed) const {
     t.batch_size = batch_size;
     t.lr = lr;
     t.shuffle_seed = shuffle_seed;
-    t.scheduler = LRScheduler::Constant(lr);
+    t.scheduler = scheduler;
+    t.weight_decay = weight_decay;
     return t;
 }
 
@@ -83,15 +84,8 @@ static Network CreateCifarCNN(RNG& rng) {
 }
 
 static TrainHistory TrainNet(Network& net, const Split& s, const TestConfig& cfg) {
-    TrainConfig tcfg;
-    tcfg.epochs = cfg.epochs;
-    tcfg.batch_size = cfg.batch_size;
-    tcfg.lr = cfg.lr;
-    tcfg.shuffle_seed = 42;
-    tcfg.scheduler = LRScheduler::Constant(cfg.lr);
-
-    Loss loss = Loss::CrossEntropy();
-    return net.Train(s.X_train, s.y_train, s.X_test, s.y_test, tcfg, loss);
+    const Loss loss = Loss::CrossEntropy();
+    return net.Train(s.X_train, s.y_train, s.X_test, s.y_test, cfg.ToTrainConfig(42), loss);
 }
 
 static void PrintResults(const TrainHistory& history, const Matrix& logits, const Matrix& y_test) {
@@ -152,7 +146,9 @@ void RunAllTests() {
     TestMnistBasic(mnist_cfg);
 
     TestConfig cifar_cnn_cfg;
-    cifar_cnn_cfg.epochs = 30;
+    cifar_cnn_cfg.epochs = 15;
+    cifar_cnn_cfg.weight_decay = 0.0001f;
+    cifar_cnn_cfg.scheduler = LRScheduler::StepLR(0.001f, 0.5f, 10);
     TestCifar10CNN(cifar_cnn_cfg);
 }
 
