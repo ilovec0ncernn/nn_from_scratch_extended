@@ -23,18 +23,10 @@
 git submodule update --init --recursive
 ```
 
-Сборка проекта на из корневой папки через powershell:
-
-```powershell
-cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j 8
-.\build\nn_run.exe
-```
-
-или через bash:
+Сборка проекта на из корневой папки:
 
 ```bash
-cmake -S nn_from_scratch_extended -B nn_from_scratch_extended/build -DCMAKE_BUILD_TYPE=Release
-cmake --build nn_from_scratch_extended/build -j 8
-.\build\nn_run.exe
+cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j 8
+./build/nn_run.exe
 ```
