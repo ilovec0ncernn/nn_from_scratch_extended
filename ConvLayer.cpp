@@ -114,15 +114,18 @@ Matrix ConvLayer::Forward(const Matrix& X) {
     col_ = Im2Col(X);
 
     Matrix Z = W_ * col_;
-    for (Index i = 0; i < Hs * B; ++i)
+    for (Index i = 0; i < Hs * B; ++i) {
         Z.col(i) += b_;
+    }
 
     y_.resize(C_out_ * Hs, B);
     Vector z_col(C_out_ * Hs);
     for (Index b = 0; b < B; ++b) {
-        for (Index c = 0; c < C_out_; ++c)
-            for (Index hs = 0; hs < Hs; ++hs)
+        for (Index c = 0; c < C_out_; ++c) {
+            for (Index hs = 0; hs < Hs; ++hs) {
                 z_col(c * Hs + hs) = Z(c, b * Hs + hs);
+            }
+        }
         y_.col(b) = sigma_.Forward(z_col);
     }
 
@@ -138,10 +141,13 @@ Matrix ConvLayer::BackwardDy(const Matrix& dL_dy) {
         dL_dz.col(b) = sigma_.Backward(y_.col(b), dL_dy.col(b));
 
     Matrix dL_dZ(C_out_, Hs * B);
-    for (Index b = 0; b < B; ++b)
-        for (Index c = 0; c < C_out_; ++c)
-            for (Index hs = 0; hs < Hs; ++hs)
+    for (Index b = 0; b < B; ++b) {
+        for (Index c = 0; c < C_out_; ++c) {
+            for (Index hs = 0; hs < Hs; ++hs) {
                 dL_dZ(c, b * Hs + hs) = dL_dz(c * Hs + hs, b);
+            }
+        }
+    }
 
     if (dW_sum_.rows() != C_out_ || dW_sum_.cols() != C_in_ * kH_ * kW_)
         dW_sum_.resize(C_out_, C_in_ * kH_ * kW_);
@@ -166,18 +172,21 @@ Vector ConvLayer::BackwardDy(const Vector& dL_dy) {
 }
 
 void ConvLayer::Step(int batch_size, Scalar lambda) {
-    if (lambda != Scalar(0))
+    if (lambda != Scalar(0)) {
         dW_sum_.noalias() += Scalar(batch_size) * lambda * W_;
+    }
     opt_.Apply(state_W_, W_, dW_sum_, batch_size);
 
     Eigen::Map<Matrix> b_map(b_.data(), b_.rows(), 1);
     Eigen::Map<const Matrix> db_map(db_sum_.data(), db_sum_.rows(), 1);
     opt_.Apply(state_b_, b_map, db_map, batch_size);
 
-    if (dW_sum_.size() != 0)
+    if (dW_sum_.size() != 0) {
         dW_sum_.setZero();
-    if (db_sum_.size() != 0)
+    }
+    if (db_sum_.size() != 0) {
         db_sum_.setZero();
+    }
 }
 
 void ConvLayer::SetLr(Scalar lr) {
@@ -210,14 +219,16 @@ void ConvLayer::LoadWeights(std::istream& in) {
     int64_t rows, cols;
     in.read(reinterpret_cast<char*>(&rows), sizeof(rows));
     in.read(reinterpret_cast<char*>(&cols), sizeof(cols));
-    if (rows != W_.rows() || cols != W_.cols())
+    if (rows != W_.rows() || cols != W_.cols()) {
         throw std::runtime_error("ConvLayer::LoadWeights: weight matrix dimension mismatch");
+    }
     in.read(reinterpret_cast<char*>(W_.data()), rows * cols * sizeof(Scalar));
 
     int64_t sz;
     in.read(reinterpret_cast<char*>(&sz), sizeof(sz));
-    if (sz != b_.size())
+    if (sz != b_.size()) {
         throw std::runtime_error("ConvLayer::LoadWeights: bias vector dimension mismatch");
+    }
     in.read(reinterpret_cast<char*>(b_.data()), sz * sizeof(Scalar));
 }
 
