@@ -3,7 +3,7 @@
 ## Requirements
 
 - **CMake** 4.0+
-- **GCC 11+** с поддержкой C++17 (проверено на MinGW-W64 GCC 13.2.0)
+- **GCC 11+** с поддержкой C++17
 - **Git** (для инициализации submodules)
 
 На Windows рекомендуется MinGW.
