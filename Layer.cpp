@@ -1,12 +1,26 @@
 #include "Layer.h"
 
 #include <EigenRand/EigenRand>
+#include <istream>
+#include <ostream>
+#include <stdexcept>
 #include <utility>
+
+#include "WeightInit.h"
 
 namespace nn {
 
-Matrix Layer::InitA(Index out_dim, Index in_dim, RNG& rng) {
-    const Scalar std = std::sqrt(Scalar(2) / static_cast<Scalar>(in_dim + out_dim));
+Matrix Layer::InitA(Index out_dim, Index in_dim, RNG& rng, WeightInit init) {
+    Scalar std;
+    switch (init) {
+        case WeightInit::He:
+            std = std::sqrt(Scalar(2) / static_cast<Scalar>(in_dim));
+            break;
+        case WeightInit::Xavier:
+        default:
+            std = std::sqrt(Scalar(2) / static_cast<Scalar>(in_dim + out_dim));
+            break;
+    }
     return Eigen::Rand::normal<Matrix>(out_dim, in_dim, rng.gen) * std;
 }
 
@@ -14,8 +28,8 @@ Vector Layer::InitB(Index out_dim) {
     return Vector::Constant(out_dim, Scalar(0.01f));
 }
 
-Layer::Layer(Index in_dim, Index out_dim, Activation sigma, RNG& rng)
-    : A_(InitA(out_dim, in_dim, rng)), b_(InitB(out_dim)), sigma_(std::move(sigma)) {
+Layer::Layer(Index in_dim, Index out_dim, Activation sigma, RNG& rng, WeightInit init, Optimizer opt)
+    : A_(InitA(out_dim, in_dim, rng, init)), b_(InitB(out_dim)), sigma_(std::move(sigma)), opt_(std::move(opt)) {
 }
 
 Index Layer::InDim() const {
@@ -72,16 +86,61 @@ Matrix Layer::BackwardDy(const Matrix& dL_dy) {
     return A_.transpose() * dL_dz;
 }
 
-void Layer::Step(float lr, int batch_size) {
-    const Scalar scale = lr / static_cast<Scalar>(batch_size);
-    A_ -= scale * dA_sum_;
-    b_ -= scale * db_sum_;
-    if (dA_sum_.size() != 0) {
+void Layer::Step(int batch_size, Scalar lambda) {
+    if (lambda != Scalar(0))
+        dA_sum_.noalias() += Scalar(batch_size) * lambda * A_;
+    opt_.Apply(state_A_, A_, dA_sum_, batch_size);
+
+    Eigen::Map<Matrix> b_map(b_.data(), b_.rows(), 1);
+    Eigen::Map<const Matrix> db_map(db_sum_.data(), db_sum_.rows(), 1);
+    opt_.Apply(state_b_, b_map, db_map, batch_size);
+
+    if (dA_sum_.size() != 0)
         dA_sum_.setZero();
-    }
-    if (db_sum_.size() != 0) {
+    if (db_sum_.size() != 0)
         db_sum_.setZero();
-    }
+}
+
+void Layer::SetLr(Scalar lr) {
+    opt_.SetLr(lr);
+}
+
+void Layer::SetTraining(bool) {
+}
+
+void Layer::ClearCache() {
+    x_.resize(0, 0);
+    z_.resize(0, 0);
+    y_.resize(0, 0);
+    dA_sum_.resize(0, 0);
+    db_sum_.resize(0);
+}
+
+void Layer::SaveWeights(std::ostream& out) const {
+    const int64_t rows = A_.rows();
+    const int64_t cols = A_.cols();
+    out.write(reinterpret_cast<const char*>(&rows), sizeof(rows));
+    out.write(reinterpret_cast<const char*>(&cols), sizeof(cols));
+    out.write(reinterpret_cast<const char*>(A_.data()), rows * cols * sizeof(Scalar));
+
+    const int64_t sz = b_.size();
+    out.write(reinterpret_cast<const char*>(&sz), sizeof(sz));
+    out.write(reinterpret_cast<const char*>(b_.data()), sz * sizeof(Scalar));
+}
+
+void Layer::LoadWeights(std::istream& in) {
+    int64_t rows, cols;
+    in.read(reinterpret_cast<char*>(&rows), sizeof(rows));
+    in.read(reinterpret_cast<char*>(&cols), sizeof(cols));
+    if (rows != A_.rows() || cols != A_.cols())
+        throw std::runtime_error("Layer::LoadWeights: weight matrix dimension mismatch");
+    in.read(reinterpret_cast<char*>(A_.data()), rows * cols * sizeof(Scalar));
+
+    int64_t sz;
+    in.read(reinterpret_cast<char*>(&sz), sizeof(sz));
+    if (sz != b_.size())
+        throw std::runtime_error("Layer::LoadWeights: bias vector dimension mismatch");
+    in.read(reinterpret_cast<char*>(b_.data()), sz * sizeof(Scalar));
 }
 
 }  // namespace nn

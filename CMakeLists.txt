@@ -17,7 +17,11 @@ target_include_directories(nn_run PRIVATE
     ${CMAKE_SOURCE_DIR}/external_submodules/eigen
     ${CMAKE_SOURCE_DIR}/external_submodules/EigenRand
     ${CMAKE_SOURCE_DIR}/external_submodules/mnist/include
+    ${CMAKE_SOURCE_DIR}/external_submodules/CIFAR-10/include
 )
 
 string(REPLACE "\\" "/" NN_MNIST_ABS "${CMAKE_SOURCE_DIR}/external_submodules/mnist")
 target_compile_definitions(nn_run PRIVATE NN_MNIST_DIR=\"${NN_MNIST_ABS}\")
+
+string(REPLACE "\\" "/" NN_CIFAR10_ABS "${CMAKE_SOURCE_DIR}/external_submodules/CIFAR-10/cifar-10-batches-bin")
+target_compile_definitions(nn_run PRIVATE NN_CIFAR10_DIR=\"${NN_CIFAR10_ABS}\")
